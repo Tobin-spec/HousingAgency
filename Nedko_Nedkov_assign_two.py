@@ -177,6 +177,130 @@ def populateTables(db_name):
         cnx.commit()
         print("\t-Successfully populated table [listing_applications]")
 
+
+def createViews(my_cursor):
+    my_cursor.execute("\
+   CREATE VIEW tenant_addresses AS \
+        SELECT c.first_name, c.last_name, p.address \
+          FROM properties AS p \
+          JOIN customers AS c \
+            ON p.customerID = c.customerID;")  # Get all tenants and their addresses
+
+    my_cursor.execute("\
+   CREATE VIEW employees_losing_tenants AS \
+        SELECT e.first_name, e.last_name \
+          FROM properties AS p \
+          JOIN employees AS e \
+            ON p.EmployeeID = e.EmployeeID \
+          JOIN customers AS c \
+            ON p.CustomerID = c.CustomerID \
+         WHERE c.move_out_date IS NOT NULL;")  # Get all employees managing a property,
+                                               # which a tenant is moving out of
+
+    my_cursor.execute("\
+     CREATE VIEW month_avg_points AS \
+          SELECT EXTRACT(month FROM c.move_in_date), AVG(c.points) \
+            FROM customers AS c \
+           WHERE c.move_in_date IS NOT NULL \
+        GROUP BY EXTRACT(month FROM c.move_in_date)")  # Get the average points for all tenants
+                                                       # that have moved in during each month
+
+    my_cursor.execute("\
+     CREATE VIEW most_interested_customer AS \
+          SELECT c.first_name, c.last_name, COUNT(listingID) AS applications \
+            FROM listing_applications AS la \
+            JOIN customers AS c \
+              ON la.customerID = c.customerID \
+        GROUP BY c.customerID \
+        ORDER BY COUNT(listingID) DESC \
+          LIMIT 1;")  # Get the customer that has applied for most properties
+
+    my_cursor.execute("\
+     CREATE VIEW most_wanted_property AS \
+          SELECT p.Address, COUNT(la.customerID) AS applications\
+            FROM listing_applications AS la \
+            JOIN listings AS l \
+              ON la.listingID = l.listingID \
+            JOIN properties AS p \
+              ON l.propertyID = p.propertyID \
+        GROUP BY la.listingID \
+        ORDER BY COUNT(la.customerID) DESC \
+           LIMIT 1;")  # Get the property for which most people have applied
+
+    my_cursor.execute("\
+        CREATE PROCEDURE \
+        get_employee_in_address(IN address VARCHAR(200), OUT first_name VARCHAR(20), OUT last_name VARCHAR(20)) \
+        BEGIN  \
+        SELECT e.first_name, e.last_name \
+        INTO first_name, last_name \
+        FROM properties AS p \
+        JOIN employees AS e \
+        ON p.employeeID = e.employeeID \
+        WHERE p.address = address; \
+        END")  # Get the employee managing a specific property by address
+
+    my_cursor.execute("\
+        CREATE PROCEDURE \
+        get_employee_by_tenant(IN personal_number CHAR(13), OUT first_name VARCHAR(20), OUT last_name VARCHAR(20)) \
+        BEGIN  \
+        SELECT e.first_name, e.last_name \
+          INTO first_name, last_name \
+          FROM properties AS p \
+          JOIN employees AS e \
+            ON p.employeeID = e.employeeID \
+          JOIN customers AS c \
+            ON p.customerID = c.customerID \
+         WHERE c.personal_number = personal_number; \
+        END")  # Get the employee managing the property of a specific tenant by personal number
+               # This query shows the usage of a procedure
+    
+    my_cursor.execute("\
+     CREATE VIEW available_properties_avg_rent AS \
+          SELECT AVG(rent) \
+            FROM properties AS p \
+           WHERE p.customerID IS NULL;")  # Get the average rent for all 
+                                          # properties without a tenant
+
+    my_cursor.execute("\
+     CREATE VIEW average_points_by_employee AS \
+          SELECT e.first_name, e.last_name, AVG(c.points) \
+            FROM properties AS p \
+            JOIN customers AS c \
+              ON p.customerID = c.customerID \
+            JOIN employees AS e \
+              ON p.employeeID = e.employeeID \
+        GROUP BY p.employeeID \
+        ORDER BY AVG(c.points) DESC;")  # Get the average points of all 
+                                        # customers managed by each employee
+
+    my_cursor.execute("\
+        CREATE VIEW average_salary_wanted_employees AS \
+        SELECT AVG(e.salary) \
+        FROM employees AS e \
+        WHERE e.employeeID IN (\
+            SELECT p.employeeID \
+            FROM properties AS p \
+            WHERE p.propertyID IN (\
+                SELECT l.propertyID \
+                FROM listings AS l \
+                WHERE l.listingID IN (\
+                    SELECT la.listingID \
+                    FROM listing_applications AS la \
+                    WHERE la.customerID = (\
+                        SELECT c.customerID \
+                        FROM listing_applications AS la \
+                        JOIN customers AS c \
+                        ON la.customerID = c.customerID \
+                        GROUP BY c.customerID \
+                        ORDER BY COUNT(la.listingID) DESC \
+                        LIMIT 1))));")  # AVG salaries of the employees managing the properties,
+                                        # for which the most interested customer has applied
+                                        # Query is just to show the usage of:
+                                        # Select, aggregate functions, where, subquery, join,
+                                        # group by, order by and limit all in a view
+
+
+
 cnx = mysql.connector.connect(user = 'root',
                               password = 'root',
                               host = 'localhost'
@@ -190,3 +314,4 @@ if ensureCreated(db_name, my_cursor) is False:
     createDatabase(db_name, my_cursor) 
     createTables(my_cursor) 
     populateTables(my_cursor)
+    createViews(my_cursor)
