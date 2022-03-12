@@ -315,3 +315,9 @@ if ensureCreated(db_name, my_cursor) is False:
     createTables(my_cursor) 
     populateTables(my_cursor)
     createViews(my_cursor)
+
+cnx = mysql.connector.connect(user = 'root',
+                              password = 'root',
+                              host = 'localhost',
+                              database = db_name)
+
